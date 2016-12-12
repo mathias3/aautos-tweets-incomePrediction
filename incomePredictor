@@ -1,0 +1,28 @@
+## Import namespaces
+from pyspark.mllib.linalg import Vectors
+from pyspark.mllib.regression import LabeledPoint
+from pyspark.mllib.classification import StreamingLogisticRegressionWithSGD
+from pyspark.streaming import *
+
+## Process files
+def parse(lp):
+    label = float(lp[lp.find('(') + 1: lp.find(',')])
+    vec = Vectors.dense(lp[lp.find('[') + 1: lp.find(']')].split(','))
+    return LabeledPoint(label, vec)
+
+ssc = StreamingContext(sc, 30)
+training = ssc.textFileStream("/training/lr").map(parse)
+testing = ssc.textFileStream("/testing/lr").map(parse)
+
+## Train logistic regression model
+numFeatures = 6
+model = StreamingLogisticRegressionWithSGD()
+model.setInitialWeights([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+
+## Configure model
+model.trainOn(training)
+model.predictOnValues(testing.map(lambda lp : (lp.label, lp.features))).saveAsTextFiles("/testing/out")
+
+## Start streaming
+ssc.start()
+ssc.awaitTermination()
